@@ -1,0 +1,247 @@
+<script type="text/javascript">
+	(function() {
+	    function createPathField(row, defaultType){
+			return $('<input/>',{class:"node-input-path-value",type:"text",style:"width: 60%;"}).appendTo(row);
+		}
+		
+		function createTypeField(row) {
+			return $('<input/>', {
+					class: "node-input-type-value",
+					type: "text",
+					style: "width: 20%;"
+				}).appendTo(row)
+				.typedInput({
+					type: "dbusTypes",
+					types: [{
+						value: "dbusTypes",
+						options: [{
+								value: "string",
+								label: "String"
+							}, {
+								value: "double",
+								label: "Double"
+							}, {
+								value: "int16",
+								label: "Int16"
+							}, {
+								value: "uint16",
+								label: "Uint16"
+							}, {
+								value: "int32",
+								label: "Int32"
+							}, {
+								value: "uint32",
+								label: "Uint32"
+							}, {
+								value: "int64",
+								label: "Int64"
+							}, {
+								value: "uint64",
+								label: "Uint64"
+							}]
+					}]
+				});
+		}
+		
+		function createValueField(row, defaultType, defaultStep) {
+			return $('<input/>', {
+					class: "node-input-value-value",
+					type: defaultType || "text",
+					step: defaultStep || "0",
+					style: "width: 40%;"
+				}).appendTo(row);
+		}
+		
+		function exportPathConfig(pathConfig) {
+			var path = pathConfig.find(".node-input-path-value").val();
+			var type = pathConfig.find(".node-input-type-value").typedInput('value');
+			var value = pathConfig.find(".node-input-value-value").val();
+			if (type != 'string'){
+				value = Number(value);
+			}
+			var newPathConfig = {path: path, type: type, value: value};
+			return newPathConfig;
+		}
+		
+		RED.nodes.registerType('create-service',{
+			category: 'Victron Dbus',
+			color: '#a6bbcf',
+			defaults: {
+				name: {value:""},
+				serviceName: {value:"", required:true},
+				pathConfigs: {value:[{path: "/ProductName", type:"string", value:"SK Battery"}, {path:"/CustomName", type:"string", value:"SKBattery"}, {path:"/Mgmt/Connection", type:"string", value:"SignalK"}, {path:"/Mgmt/ProcessName", type:"string", value:"Signalk"}, {path:"/Mgmt/ProcessVersion", type:"string", value:"v1.0"}, {path:"/Connected", type:"int16", value:1}, {path:"/DeviceInstance", type:"string", value:'100'}, {path:"/ProductID", type:"string", value:'0'}, {path:"/Serial", type:"string", value:"S1"}, {path:"/HardwareVersion", type:"string", value:"v1.0"}, {path:"/FirmwareVersion", type:"string", value:"v1.0"}]}
+			},
+			inputs:1,
+			outputs:0,
+			icon: "bridge.svg",
+			label: function() {
+				return this.name||"create-service";
+			},
+			oneditprepare: function() {
+				var node = this;			
+				$("#node-input-path-container").css('min-height','150px').css('min-width','450px').editableList({
+					addItem: function(container, i, pathConfig) {
+	                    container.css({
+							overflow: 'hidden',
+							whiteSpace: 'nowrap'
+						});
+						if (!pathConfig.hasOwnProperty('path')) {
+							pathConfig.path = "";
+							pathConfig.type = "string";
+							pathConfig.value = "";
+						}
+						let fragment = document.createDocumentFragment();
+						
+						var row1 = $('<div/>',{style:"display:flex; align-items: baseline"}).appendTo(fragment);
+						var spacer1 = $('<div/>',{style:"margin-top:-4px;"}).appendTo(fragment);
+						var row2 = $('<div/>',{style:"display:flex; align-items: center"}).appendTo(fragment);
+
+						$('<label style="margin-right: 0px;width:50%;"><i class="fa fa-tag"></i> Path</label>').appendTo(row1);
+						$('<label style="margin-right: 0px;width:50%;"><i class="fa fa-tag"></i> Initial Value</label>').appendTo(row1);
+						
+						var pathField = createPathField(row2);
+						pathField.val(pathConfig.path);
+						var spacer2 = $('<div/>',{style:"margin-left:5px;"}).appendTo(row2);						
+						var valueField = createValueField(row2, (pathConfig.type === 'string' ? 'text' : 'number'), (pathConfig.type === 'double' ? 'any' : '0'));
+						valueField.val(pathConfig.value);
+						var typeField = createTypeField(row2);
+						typeField.typedInput('value', pathConfig.type);
+						typeField.on('change', function(event, type, value) {
+							if (value === 'string'){
+								valueField.attr('type', 'text');
+							}else if (value === 'double'){
+								valueField.attr('type', 'number');
+								valueField.attr('step', 'any');								
+							}
+							else{
+								valueField.attr('type', 'number');
+								valueField.attr('step', '0');
+							}
+						});
+
+						container[0].appendChild(fragment);						
+					},
+					removeItem: function(pathConfig) {
+					
+					},
+					removable: true
+				});
+
+				for (var i=0;i<this.pathConfigs.length;i++) {
+					var path = this.pathConfigs[i];
+					$("#node-input-path-container").editableList('addItem',path);
+				}
+			},
+			oneditresize: function(size) {
+				var rows = $("#dialog-form>div:not(.node-input-path-container-row)");
+				var height = size.height;
+				for (var i=0;i<rows.length;i++) {
+					height -= $(rows[i]).outerHeight(true);
+				}
+				var editorRow = $("#dialog-form>div.node-input-path-container-row");
+				height -= (parseInt(editorRow.css("marginTop"))+parseInt(editorRow.css("marginBottom")));
+				height += 16;
+				$("#node-input-path-container").editableList('height',height);
+			},
+			oneditsave: function() {
+				var pathConfigs = $("#node-input-path-container").editableList('items');
+				var node = this;
+				//alert('Path Configs 1:' + node.pathConfigs[0].path);
+				node.pathConfigs = [];
+				//alert('Path Configs 2:' + node.pathConfigs);
+				pathConfigs.each(function(i) {
+					//alert('New Path Config:' +  exportPathConfig($(this)).path);
+					node.pathConfigs.push(exportPathConfig($(this)));
+				});
+				//this.propertyType = $("#node-input-property").typedInput('type');
+			}
+		});
+	})();
+</script>
+
+<script type="text/html" data-template-name="create-service">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+	<div class="form-row">
+        <label for="node-input-serviceName"><i class="fa fa-tag"></i> Service</label>
+        <input type="text" id="node-input-serviceName" placeholder="Service Name">
+    </div>
+	<div class="form-row node-input-path-container-row">
+        <ol id="node-input-path-container"></ol>
+    </div>
+</script>
+
+<script type="text/html" data-help-name="create-service">
+    <p></p>
+</script>
+
+<script type="text/javascript">
+    RED.nodes.registerType('set-service-value',{
+        category: 'Victron Dbus',
+        color: '#a6bbcf',
+        defaults: {
+            name: {value:""},
+			service: {value:"", required:true}
+        },
+        inputs:1,
+        outputs:0,
+        icon: "arrow-in.png",
+        label: function() {
+            return this.name||"set-service-value";
+        }
+    });
+</script>
+
+<script type="text/html" data-template-name="set-service-value">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+	<div class="form-row">
+        <label for="node-input-service"><i class="fa fa-tag"></i> Service</label>
+        <input type="text" id="node-input-service" placeholder="Service">
+    </div>
+</script>
+
+<script type="text/html" data-help-name="set-service-value">
+    <p></p>
+</script>
+
+<script type="text/javascript">
+    RED.nodes.registerType('set-service-path-value',{
+        category: 'Victron Dbus',
+        color: '#a6bbcf',
+        defaults: {
+            name: {value:""},
+			service: {value:"", required:true},
+			path: {value:"", required:true}
+        },
+        inputs:1,
+        outputs:0,
+        icon: "arrow-in.png",
+        label: function() {
+            return this.name||"set-service-path-value";
+        }
+    });
+</script>
+
+<script type="text/html" data-template-name="set-service-path-value">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+	<div class="form-row">
+        <label for="node-input-service"><i class="fa fa-tag"></i> Service</label>
+        <input type="text" id="node-input-service" placeholder="Service">
+    </div>
+	<div class="form-row">
+        <label for="node-input-path"><i class="fa fa-tag"></i> Path</label>
+        <input type="text" id="node-input-path" placeholder="Path">
+    </div>
+</script>
+
+<script type="text/html" data-help-name="set-service-path-value">
+    <p></p>
+</script>
