@@ -9,8 +9,7 @@
   "dependencies": {
     "compare-versions": "^3.3.0",
     "dbus-next": "git+https://github.com/jprotzman/node-dbus-next.git",
-    "debug": "^3.1.0",
-    "python-shell": "^3.0.1"
+    "debug": "^3.1.0"
   },
   "keywords": [
     "node-red",
