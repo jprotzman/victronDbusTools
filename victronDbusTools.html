@@ -1,14 +1,22 @@
 <script type="text/javascript">
 	(function() {
 	    function createPathField(row, defaultType){
-			return $('<input/>',{class:"node-input-path-value",type:"text",style:"width: 60%;"}).appendTo(row);
+			return $('<input/>',{class:"node-input-path-value",type:"text",style:"width: 48%;"}).appendTo(row);
+		}
+		
+		function createMinField(row){
+			return $('<input/>',{class:"node-input-min-value",type:"text",style:"width: 50%;"}).appendTo(row);
+		}
+		
+		function createMaxField(row){
+			return $('<input/>',{class:"node-input-max-value",type:"text",style:"width: 50%;"}).appendTo(row);
 		}
 		
 		function createTypeField(row) {
 			return $('<input/>', {
 					class: "node-input-type-value",
 					type: "text",
-					style: "width: 20%;"
+					style: "width: 15%;"
 				}).appendTo(row)
 				.typedInput({
 					type: "dbusTypes",
@@ -48,7 +56,15 @@
 					class: "node-input-value-value",
 					type: defaultType || "text",
 					step: defaultStep || "0",
-					style: "width: 40%;"
+					style: "width: 25%;"
+				}).appendTo(row);
+		}
+		
+		function createMinMaxCheckBox(row) {
+			return $('<input/>', {
+					class: "node-input-minmax-check",
+					type: "checkbox",
+					style: "width: 12%;"
 				}).appendTo(row);
 		}
 		
@@ -56,10 +72,18 @@
 			var path = pathConfig.find(".node-input-path-value").val();
 			var type = pathConfig.find(".node-input-type-value").typedInput('value');
 			var value = pathConfig.find(".node-input-value-value").val();
+			var minValue = pathConfig.find(".node-input-min-value").val();
+			var maxValue = pathConfig.find(".node-input-max-value").val();
+			var hasMinMax = pathConfig.find(".node-input-minmax-check").prop('checked');
+
 			if (type != 'string'){
 				value = Number(value);
 			}
 			var newPathConfig = {path: path, type: type, value: value};
+			if (hasMinMax){
+				newPathConfig.min = Number(minValue);
+				newPathConfig.max = Number(maxValue);
+			}
 			return newPathConfig;
 		}
 		
@@ -95,13 +119,20 @@
 						var row1 = $('<div/>',{style:"display:flex; align-items: baseline"}).appendTo(fragment);
 						var spacer1 = $('<div/>',{style:"margin-top:-4px;"}).appendTo(fragment);
 						var row2 = $('<div/>',{style:"display:flex; align-items: center"}).appendTo(fragment);
+						var spacer2 = $('<div/>',{style:"margin-top:4px;"}).appendTo(fragment);
+						var row3 = $('<div/>',{style:"display:flex; align-items: center"}).appendTo(fragment);
+						var spacer3 = $('<div/>',{style:"margin-top:-4px;"}).appendTo(fragment);
+						var row4 = $('<div/>',{style:"display:flex; align-items: center"}).appendTo(fragment);
 
-						$('<label style="margin-right: 0px;width:50%;"><i class="fa fa-tag"></i> Path</label>').appendTo(row1);
-						$('<label style="margin-right: 0px;width:50%;"><i class="fa fa-tag"></i> Initial Value</label>').appendTo(row1);
+						$('<label style="margin-right: 0px;width:48%;"><i class="fa fa-tag"></i> Path</label>').appendTo(row1);
+						$('<label style="margin-right: 0px;width:40%;"><i class="fa fa-tag"></i> Initial Value</label>').appendTo(row1);
+						$('<label style="margin-right: 0px;width:12%;">Min/Max</label>').appendTo(row1);
+						$('<label style="margin-right: 0px;width:50%;"><i class="fa fa-tag"></i> Min</label>').appendTo(row3);
+						$('<label style="margin-right: 0px;width:50%;"><i class="fa fa-tag"></i> Max</label>').appendTo(row3);
 						
 						var pathField = createPathField(row2);
 						pathField.val(pathConfig.path);
-						var spacer2 = $('<div/>',{style:"margin-left:5px;"}).appendTo(row2);						
+						var spacer4 = $('<div/>',{style:"margin-left:5px;"}).appendTo(row2);					
 						var valueField = createValueField(row2, (pathConfig.type === 'string' ? 'text' : 'number'), (pathConfig.type === 'double' ? 'any' : '0'));
 						valueField.val(pathConfig.value);
 						var typeField = createTypeField(row2);
@@ -118,7 +149,32 @@
 								valueField.attr('step', '0');
 							}
 						});
-
+						
+						var minMaxCheck = createMinMaxCheckBox(row2);
+						minMaxCheck.change(function(event) {
+							var minMaxCheck = event.target;
+							if (minMaxCheck.checked) {
+								row3.show();
+								row4.show();
+							} else {
+								row3.hide();
+								row4.hide();
+							}
+						});
+						
+						var minField = createMinField(row4);
+						var spacer5 = $('<div/>',{style:"margin-left:5px;"}).appendTo(row4);	
+						var maxField = createMaxField(row4);
+						
+						if (pathConfig.hasOwnProperty("min") && pathConfig.hasOwnProperty("max")){
+							minMaxCheck.attr('checked',true)
+							minField.val(pathConfig.min);
+							maxField.val(pathConfig.max);
+						}else{
+							row3.hide();
+							row4.hide();
+						}
+						
 						container[0].appendChild(fragment);						
 					},
 					removeItem: function(pathConfig) {
@@ -243,5 +299,42 @@
 </script>
 
 <script type="text/html" data-help-name="set-service-path-value">
+    <p></p>
+</script>
+
+<script type="text/javascript">
+    RED.nodes.registerType('get-service-path-value',{
+        category: 'Victron Dbus',
+        color: '#a6bbcf',
+        defaults: {
+            name: {value:""},
+			service: {value:"", required:true},
+			path: {value:"", required:true}
+        },
+        inputs:0,
+        outputs:1,
+        icon: "bridge.svg",
+        label: function() {
+            return this.name||"get-service-path-value";
+        }
+    });
+</script>
+
+<script type="text/html" data-template-name="get-service-path-value">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+	<div class="form-row">
+        <label for="node-input-service"><i class="fa fa-tag"></i> Service</label>
+        <input type="text" id="node-input-service" placeholder="Service">
+    </div>
+	<div class="form-row">
+        <label for="node-input-path"><i class="fa fa-tag"></i> Path</label>
+        <input type="text" id="node-input-path" placeholder="Path">
+    </div>
+</script>
+
+<script type="text/html" data-help-name="get-service-path-value">
     <p></p>
 </script>

@@ -66,7 +66,8 @@ class VictronInterfaceTree extends EventEmitter {
 		this.bus.disconnect();
 	}
 	
-	addPath(path, type, initialValue){
+	addPath(path, type, initialValue, minValue, maxValue){
+		//console.log('Path:' + path + ' Min:' + minValue + ' Max:' + maxValue + ' Check:' + (minValue == null && maxValue == null));
 		if (!path.includes('/')) throw new Error('invalid path ' + path + ' no / found');
 		
 		let signature = '';
@@ -99,7 +100,12 @@ class VictronInterfaceTree extends EventEmitter {
 			currentPath += '/' + pathParts[i];
 			if (!(currentPath in this.nodes)){
 				if (i === pathParts.length - 1){
-					let itemInterface = new VictronItemInterface('com.victronenergy.BusItem', path, signature, initialValue);
+					let itemInterface = {};
+					if (minValue != null && maxValue != null){
+						itemInterface = new VictronItemInterfaceMinMax('com.victronenergy.BusItem', path, signature, initialValue, minValue, maxValue);
+					}else{
+						itemInterface = new VictronItemInterface('com.victronenergy.BusItem', path, signature, initialValue);
+					}
 					this.nodes[currentPath] = itemInterface;
 					addedNodes[currentPath] = itemInterface;
 				}else{
@@ -114,7 +120,7 @@ class VictronInterfaceTree extends EventEmitter {
 		if (this.serviceStarted){
 			for (const [key, value] of Object.entries(addedNodes)) {
 				this.bus.export(key, value);
-				if (value instanceof VictronItemInterface){
+				if (value instanceof VictronItemInterface || value instanceof VictronItemInterfaceMinMax){
 					value.PropertiesChanged();
 				}
 			}
@@ -131,7 +137,7 @@ class VictronRootInterface extends Interface {
 	GetValue(){
 		let dict = {};
 		for (let key in this.tree.nodes){
-			if (this.tree.nodes[key] instanceof VictronItemInterface){
+			if (this.tree.nodes[key] instanceof VictronItemInterface || this.tree.nodes[key] instanceof VictronItemInterfaceMinMax){
 				dict[key.substring(1)] = this.tree.nodes[key].GetValue();
 			}
 		}
@@ -142,7 +148,7 @@ class VictronRootInterface extends Interface {
 	GetText(){
 		let dict = {};
 		for (let key in this.tree.nodes){
-			if (this.tree.nodes[key] instanceof VictronItemInterface){
+			if (this.tree.nodes[key] instanceof VictronItemInterface || this.tree.nodes[key] instanceof VictronItemInterfaceMinMax){
 				dict[key.substring(1)] = this.tree.nodes[key].GetText();
 			}
 		}
@@ -153,9 +159,12 @@ class VictronRootInterface extends Interface {
 	GetItems(){
 		let dict = {};
 		for (let key in this.tree.nodes){
-			if (this.tree.nodes[key] instanceof VictronItemInterface){
+			if (this.tree.nodes[key] instanceof VictronItemInterface || this.tree.nodes[key] instanceof VictronItemInterfaceMinMax){
 				dict[key] = { Text: new Variant('s', this.tree.nodes[key].GetText()), Value: new Variant('v', this.tree.nodes[key].GetValue())};
 			}
+			//else if (this.tree.nodes[key] instanceof VictronItemInterfaceMinMax){
+			//	dict[key] = { Text: new Variant('s', this.tree.nodes[key].GetText()), Value: new Variant('v', this.tree.nodes[key].GetValue()), Min: new Variant('v', this.tree.nodes[key].GetMin()), Max: new Variant('v', this.tree.nodes[key].GetMin())};
+			//}
 		}
 		
 		return dict;
@@ -198,7 +207,7 @@ class VictronSubInterface extends Interface {
 	GetValue(){
 		let dict = {};
 		for (let key in this.tree.nodes){
-			if (this.tree.nodes[key] instanceof VictronItemInterface && key.includes(this.path)){
+			if ((this.tree.nodes[key] instanceof VictronItemInterface || this.tree.nodes[key] instanceof VictronItemInterfaceMinMax) && key.includes(this.path)){
 				dict[key.replace(this.path, '').substring(1)] = this.tree.nodes[key].GetValue();
 			}
 		}
@@ -209,7 +218,7 @@ class VictronSubInterface extends Interface {
 	GetText(){
 				let dict = {};
 		for (let key in this.tree.nodes){
-			if (this.tree.nodes[key] instanceof VictronItemInterface && key.includes(this.path)){
+			if ((this.tree.nodes[key] instanceof VictronItemInterface || this.tree.nodes[key] instanceof VictronItemInterfaceMinMax) && key.includes(this.path)){
 				dict[key.replace(this.path, '').substring(1)] = this.tree.nodes[key].GetText();
 			}
 		}
@@ -235,11 +244,11 @@ class VictronItemInterface extends Interface {
 	constructor (name, path, signature, initialValue) {
 		super(name);
 		this.itemValue = new Variant(signature, initialValue);
-		this.path = path; 
+		this.path = path;
 	}
 	
 	SetValue(value){
-		if (value instanceof Variant && value.signature === this.itemValue.signature && this.itemValue.value != value.value){
+		if (this.itemValue.value != value.value){
 			this.itemValue.value = value.value;
 			this.PropertiesChanged();
 			return 0;
@@ -282,6 +291,84 @@ VictronItemInterface.configureMembers({
 		GetText: {
 			inSignature: '',
 			outSignature: 's'
+		}
+	},
+	signals: {
+		PropertiesChanged: {
+			signature: 'a{sv}'
+		}
+	}
+});
+
+class VictronItemInterfaceMinMax extends Interface {	
+	constructor (name, path, signature, initialValue, min, max) {
+		super(name);
+		this.itemValue = new Variant(signature, initialValue);
+		this.path = path;
+		this.min = new Variant(signature, min);
+		this.max = new Variant(signature, max);
+	}
+	
+	SetValue(value){
+		if (this.itemValue.value != value.value && value.value >= this.min.value && value.value <= this.max.value){
+			this.itemValue.value = value.value;
+			this.PropertiesChanged();
+			return 0;
+		}
+		return 1;
+	}
+	
+	GetDescription(language, length){
+		return '';
+	}
+	
+	GetValue(){
+		return this.itemValue;
+	}
+	
+	GetText(){
+		return this.itemValue.value.toString();
+	}
+	
+	GetMin(){
+		return this.min;
+	}
+	
+	GetMax(){
+		return this.max;
+	}
+	
+	PropertiesChanged(){
+		let dict = {Value: this.GetValue(), Text: new Variant('s', this.GetText())};
+		return dict;
+	}
+}
+
+VictronItemInterfaceMinMax.configureMembers({
+	methods:{
+		SetValue: {
+			inSignature: 'v',
+			outSignature: 'i'
+		},
+		GetDescription: {
+			inSignature: 'si',
+			outSignature: 's'
+		},
+		GetValue: {
+			inSignature: '',
+			outSignature: 'v'
+		},
+		GetText: {
+			inSignature: '',
+			outSignature: 's'
+		},
+		GetMin: {
+			inSignature: '',
+			outSignature: 'v'
+		},
+		GetMax: {
+			inSignature: '',
+			outSignature: 'v'
 		}
 	},
 	signals: {

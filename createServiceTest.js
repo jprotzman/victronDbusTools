@@ -18,7 +18,8 @@ async function main() {
 		await newTree.addPath('/Serial', 'string', 'SKBAT1');
 		await newTree.addPath('/HardwareVersion', 'string', 'v1.0');
 		await newTree.addPath('/FirmwareVersion', 'string', 'v.10');
-		await newTree.addPath('/Dc/0/Voltage', 'double', 10.5);
+		await newTree.addPath('/Dc/0/Voltage', 'double', 10.5, 0, 20.8);
+		await newTree.addPath('/Dc/0/Current', 'double', 13);
 		await newTree.addPath('/Info/MaxChargeVoltage', 'double', 15.2);
 		await newTree.startService();
 	}catch(e){

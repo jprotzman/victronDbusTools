@@ -16,7 +16,11 @@ module.exports = function(RED) {
 			try{
 				this.serviceTree = new VictronInterfaceTree(this.bus, this.serviceName);
 				for (let i = 0; i < this.pathConfigs.length; i++){
-					this.serviceTree.addPath(this.pathConfigs[i].path, this.pathConfigs[i].type, this.pathConfigs[i].value);
+					if (this.pathConfigs[i].hasOwnProperty('min') && this.pathConfigs[i].hasOwnProperty('max')){
+						this.serviceTree.addPath(this.pathConfigs[i].path, this.pathConfigs[i].type, this.pathConfigs[i].value, this.pathConfigs[i].min, this.pathConfigs[i].max);
+					}else{
+						this.serviceTree.addPath(this.pathConfigs[i].path, this.pathConfigs[i].type, this.pathConfigs[i].value);
+					}					
 				}
 				this.serviceTree.startService();
 				node.status({fill:"green",shape:"ring",text:"running"});
@@ -45,30 +49,32 @@ module.exports = function(RED) {
 		this.service = config.service;
 		node.status({fill:"yellow",shape:"ring",text:"disconnected"});
         node.on('input', function(msg, send, done) {
-            var exec = require('child_process').exec;
-			var executeString = 'dbus -y ' + this.service + ' ' + msg.topic + ' SetValue ';
-			if (typeof msg.payload == 'number'){
-				executeString += '%' + msg.payload;
-			}else if (typeof msg.payload == 'boolean'){
-				if (msg.payload){
-					executeString += '%1';
+            try{
+				if (node.variant){
+					node.variant.value = msg.payload;
+					node.busItem.SetValue(node.variant);
+					node.status({fill:"green",shape:"ring",text:"sent:" + msg.payload});
 				}else{
-					executeString += '%0';
-				}
-			}else if (typeof msg.payload == 'string'){
-				executeString += msg.payload;
-			}
-			//node.warn(executeString);
-			exec(executeString,
-				function (error, stdout, stderr) {
-					//node.warn(stdout);
-					//node.warn(stderr);
-					node.status({fill:"green",shape:"ring",text:"sent"});
-					if (error !== null) {
-						node.status({fill:"red",shape:"ring",text:"error"});
-						done(error);
+					async function writeValue() {
+						try{
+							let obj = await node.bus.getProxyObject(node.service, msg.topic);
+							node.busItem = await obj.getInterface('com.victronenergy.BusItem');
+							node.variant = await node.busItem.GetValue()
+							node.variant.value = msg.payload;
+							node.busItem.SetValue(node.variant);
+							node.status({fill:"green",shape:"ring",text:"sent:" + msg.payload});
+						}catch(e){
+							node.status({fill:"red",shape:"ring",text:"error"});
+							done(e);
+						}
 					}
-				});
+					
+					writeValue();
+				}
+			}catch(e){
+				node.status({fill:"red",shape:"ring",text:"error"});
+				done(e);
+			}
         });
     }
 	
@@ -87,7 +93,7 @@ module.exports = function(RED) {
 				if (node.variant){
 					node.variant.value = msg.payload;
 					node.busItem.SetValue(node.variant);
-					node.status({fill:"green",shape:"ring",text:"sent"});
+					node.status({fill:"green",shape:"ring",text:"sent:" + msg.payload});
 				}else{
 					async function writeValue() {
 						try{
@@ -96,9 +102,10 @@ module.exports = function(RED) {
 							node.variant = await node.busItem.GetValue()
 							node.variant.value = msg.payload;
 							node.busItem.SetValue(node.variant);
-							node.status({fill:"green",shape:"ring",text:"sent"});
+							node.status({fill:"green",shape:"ring",text:"sent:" + msg.payload});
 						}catch(e){
-							console.log(e);
+							node.status({fill:"red",shape:"ring",text:"error"});
+							done(e);
 						}
 					}
 					
@@ -111,7 +118,36 @@ module.exports = function(RED) {
         });
     }
 	
+	function GetServicePathValue(config) {
+        RED.nodes.createNode(this,config);
+        var node = this;
+		this.service = config.service;
+		this.path = config.path;
+		this.bus = dbus.systemBus();
+		this.busItem = null;
+		
+		async function GetBusItemInterface() {
+			try{
+				let obj = await node.bus.getProxyObject(node.service, node.path);
+				node.busItem = await obj.getInterface('com.victronenergy.BusItem');
+				node.busItem.on('PropertiesChanged', function(dict){
+					let msg = {payload: dict.Value.value, topic: node.path, service: node.service};
+					node.send(msg);
+					node.status({fill:"green",shape:"ring",text:"received:" + msg.payload});
+				});
+			}catch(e){
+				node.status({fill:"red",shape:"ring",text:"error"});
+				node.error(e);
+				
+				setTimeout(() => { GetBusItemInterface(); }, 2000);
+			}
+		}
+		
+		GetBusItemInterface();
+    }
+	
     RED.nodes.registerType("create-service",CreateService);
 	RED.nodes.registerType("set-service-value",SetServiceValue);
 	RED.nodes.registerType("set-service-path-value",SetServicePathValue);
+	RED.nodes.registerType("get-service-path-value",GetServicePathValue);
 }
